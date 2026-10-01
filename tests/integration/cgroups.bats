@@ -415,6 +415,56 @@ convert_hugetlb_size() {
 	check_systemd_value "MemorySwapMax" 20971520
 }
 
+@test "runc run (cgroup v2 resources.unified zswap)" {
+	requires root cgroups_v2
+
+	if [ -z "$(find "$CGROUP_BASE_PATH" -maxdepth 2 -type f -name memory.zswap.max -print -quit)" ]; then
+		skip "requires memory.zswap.max (Linux >= 5.19)"
+	fi
+	local writeback=""
+	if [ -n "$(find "$CGROUP_BASE_PATH" -maxdepth 2 -type f -name memory.zswap.writeback -print -quit)" ]; then
+		writeback=1
+	fi
+
+	set_cgroups_path
+	update_config ' .linux.resources.unified |= {
+				"memory.zswap.max": "10485760"
+			}'
+	if [ -n "$writeback" ]; then
+		update_config ' .linux.resources.unified["memory.zswap.writeback"] = "0"'
+	fi
+
+	runc run -d --console-socket "$CONSOLE_SOCKET" test_cgroups_unified
+	[ "$status" -eq 0 ]
+
+	check_zswap() {
+		runc exec test_cgroups_unified cat /sys/fs/cgroup/memory.zswap.max
+		[ "$status" -eq 0 ]
+		[ "$output" = '10485760' ]
+		if [ -n "$writeback" ]; then
+			runc exec test_cgroups_unified cat /sys/fs/cgroup/memory.zswap.writeback
+			[ "$status" -eq 0 ]
+			[ "$output" = '0' ]
+		fi
+	}
+	check_zswap
+
+	# MemoryZSwapMax is supported since systemd v253,
+	# MemoryZSwapWriteback since systemd v256.
+	local sd_ver
+	sd_ver=$(systemd_version)
+	[ "$sd_ver" -lt 253 ] && return
+
+	check_systemd_value "MemoryZSwapMax" 10485760
+	if [ -n "$writeback" ] && [ "$sd_ver" -ge 256 ]; then
+		check_systemd_value "MemoryZSwapWriteback" "no"
+	fi
+
+	# Make sure systemd does not reset the zswap settings on daemon-reload.
+	systemctl daemon-reload
+	check_zswap
+}
+
 @test "runc run (cgroup v2 resources.unified override)" {
 	requires root cgroups_v2
 
