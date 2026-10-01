@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accordingly. This lifts the previous 1024 CPUs/nodes limit. (#5343)
 
 ### Fixed ###
+- The systemd cgroup driver now translates the `memory.zswap.max` and
+  `memory.zswap.writeback` unified resources into the `MemoryZSwapMax`
+  (systemd >= v253) and `MemoryZSwapWriteback` (systemd >= v256) unit
+  properties, so container zswap settings are no longer reset by systemd
+  on `systemctl daemon-reload`.
 - The poststart hooks are now executed after starting the user-specified
   process, fixing a runtime-spec conformance issue. (#4347, #5186)
 - Worked around a Linux kernel bug (present since kernel v6.17, fixed in v7.2)
